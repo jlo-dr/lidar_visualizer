@@ -31,7 +31,11 @@
       }: let
         crateOutputs = config.nci.outputs."lidar_vis_webapp";
       in {
-        devShells.default = crateOutputs.devShell;
+        devShells.default = crateOutputs.devShell.overrideAttrs (old: {
+          packages = (old.packages or []) ++ [
+            pkgs.rust-analyzer
+          ];
+        });
         packages.default = crateOutputs.packages.release;
       };
     };

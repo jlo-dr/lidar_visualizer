@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+    <head>
+<meta charset="utf-8" />
+    </head>
+    <body>
+<div>
+  <canvas id="x" width="800" height="800"></canvas>
+</div>
+
+<script>
+  const canvas = document.getElementById('x');
+  let ctx = canvas.getContext("2d");
+
+  async function fade() {
+      while (true) {
+          await new Promise(r => setTimeout(r, 100));
+          ctx.globalAlpha = 0.2;
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = "#000";
+          ctx.globalAlpha = 1.0;
+      }
+  }
+
+  const mid_x = canvas.width / 2;
+  const mid_y = canvas.height / 2;
+
+  async function getData() {
+      console.log('Fetching');
+      let response = await fetch('/data');
+      console.log('Done');
+      let reader = response.body.getReader(); //{ mode: "byob" });
+      // let offset = 0;
+
+      while (true) {
+          let {value, done} = await reader.read();
+          if (done === true) {
+              console.log("Done");
+              break;
+          }
+          if (value.length % 8 != 0) {
+              console.log('Now you pay for not buffering your data', value.length);
+          }
+          const radius = 10;
+          console.log(value);
+          let view = new DataView(value.buffer);
+          for (let i = 0; i+1 < Math.floor(view.byteLength / 4); i += 2) {
+              console.log("Reading out", view.getFloat32(i * 4, true), view.getFloat32((i+1) * 4, true));
+              let angle = view.getFloat32(i * 4, true) / 180 * Math.PI;
+              let distance = view.getFloat32((i+1) * 4, true) * 0.2;
+              const x = distance * Math.cos(angle) + mid_x;
+              const y = distance * Math.sin(angle) + mid_y;
+              ctx.beginPath();
+              ctx.ellipse(x, y, radius, radius, 0, 0, 2 * Math.PI);
+              ctx.fill();
+          }
+      }
+  }
+
+  getData();
+  fade();
+</script>
+    </body>
+</html>
