@@ -1,0 +1,11 @@
+[package]
+name = "lidar_vis_webapp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "*", features = ["tracing"] }
+tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread", "signal"] }
+tower-http = { version = "0.4.4", features = ["fs", "trace"] }
+tracing = "0.1.37"
+tracing-subscriber = "0.3.17"
