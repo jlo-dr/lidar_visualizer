@@ -9,10 +9,7 @@ use axum::{
 
 use tower_http::{
     LatencyUnit,
-    services::{
-        ServeDir,
-        // ServeFile,
-    },
+    services::ServeFile,
     trace::{
         TraceLayer,
         DefaultOnResponse,
@@ -27,39 +24,36 @@ use tokio::signal;
 use tokio::sync::broadcast;
 use tokio::io::AsyncReadExt;
 
-use std::sync::Arc;
-
-use std::env;
+use std::{sync::Arc, path::Path};
 
 struct AppState {
-    bc: broadcast::Sender<Vec<u8>>,
+    broadcast: broadcast::Sender<Vec<u8>>,
 }
 
 // TODO This can keep the server alive even after `main` has exited. I guess
-// we should preferably send some shutdown signal to the channel to indicate
-// that it should stop streaming.
+// we should preferably send some shutdown signal to these tasks to indicate
+// that it they stop streaming.
 async fn get_data(State(state): State<Arc<AppState>>) -> StreamBody<impl Stream<Item = Result<Vec<u8>, !>>> {
-    let bc = &state.bc;
-    let rx = bc.subscribe();
+    let broadcast = &state.broadcast;
+    let rx = broadcast.subscribe();
     StreamBody::new(tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(|x| async move { x.ok().map(|v| Result::Ok(v)) }))
 }
 
 #[tokio::main]
 async fn main() {
-    let (tx, _) = broadcast::channel(4);
-
-    let public_dir = env::var("PUBLIC_DIR").expect("PUBLIC_DIR must be set");
+    let public_dir = "public"; // env::var("PUBLIC_DIR").expect("PUBLIC_DIR must be set");
 
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .init();
 
+    let (tx, _) = broadcast::channel(4);
     let shared_state = Arc::new(AppState {
-        bc: tx.clone(),
+        broadcast: tx.clone(),
     });
 
     let app = Router::new()
-        .nest_service("/files", ServeDir::new(public_dir))
+        .nest_service("/", ServeFile::new(Path::new(public_dir).join("index.html")))
         .route("/data", get(get_data))
         .layer(TraceLayer::new_for_http()
             .on_response(DefaultOnResponse::new()
@@ -74,13 +68,15 @@ async fn main() {
 
     let sender = async {
         loop {
-            let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
+            let listener = TcpListener::bind("0.0.0.0:8001").await.unwrap();
 
             let mut read_buffer = [0u8; 512];
             loop {
                 if let Ok((mut socket, _)) = listener.accept().await {
                     println!("Received sender");
                     while let Ok(n) = socket.read(&mut read_buffer).await {
+                        // NOTE We're doing a lot of dynamic memory alloaction
+                        // here. :(
                         let _ = tx.send(read_buffer[..n].to_owned());
                     }
                 }
@@ -93,7 +89,6 @@ async fn main() {
         _ = sender => {}
         _ = server => {}
     };
-    println!("Leaving main");
 }
 
 async fn shutdown_signal() {
